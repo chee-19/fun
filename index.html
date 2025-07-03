@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mini SG GeoGuessr</title>
+<link  rel="stylesheet"
+       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+       crossorigin=""/>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+  <style>
+    body,html{margin:0;height:100%;display:flex;flex-direction:column}
+    #photo{flex:1 0 50%;background:#000000 center/contain no-repeat}
+    #map  {flex:1 0 50%}
+    #info {position:absolute;top:8px;left:8px;background:#fff;padding:6px 10px;
+           border-radius:6px;font-family:sans-serif;font-size:14px}
+    button{margin-top:4px}
+  </style>
+</head>
+<body>
+  <div id="info">Click the map to guess!</div>
+  <div id="photo"></div>
+  <div id="map"></div>
+
+  <script>
+
+  /* --- 1.  Your image pool ------------------------------------------- */
+  const IMAGES = [
+    {file:'imgs/marinabarrage.png', lat:1.2805, lng:103.8714}, // Marina Barrage
+    {file:'imgs/princeE.png', lat:1.3495, lng:103.7410}, // Princess Elizabeth Primary School
+    {file:'imgs/waterPoint.png', lat:1.4064, lng:103.9021}, // Waterway Point
+    {file:'imgs/lake.png', lat:1.3401, lng:103.7249} // Lakeside Garden
+    // add more entries here…
+  ];
+
+ /* 2️⃣  Game-wide state */
+let queue   = shuffle([...IMAGES]);   // random order, no repeats
+let currentRound = 0;                 // 0-based index in queue
+let correctHits  = 0;                 // how many guesses ≤ 1 km
+
+let solution = null;                  // {lat,lng} for the current round
+const info  = document.getElementById('info');
+const photo = document.getElementById('photo');
+
+/* 3️⃣  Leaflet map */
+const map = L.map('map', { zoomControl:false })
+             .setView([1.3521,103.8198], 11);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            { maxZoom:19, attribution:'© OSM' }).addTo(map);
+
+/* 4️⃣  Helpers */
+function shuffle(arr){
+  for (let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+
+const haversine=(la1,lo1,la2,lo2)=>{
+  const toRad=d=>d*Math.PI/180, R=6371;
+  const dLat=toRad(la2-la1), dLng=toRad(lo2-lo1);
+  const a=Math.sin(dLat/2)**2+
+           Math.cos(toRad(la1))*Math.cos(toRad(la2))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+};
+
+/* 5️⃣  Start / reset a round */
+function startRound(){
+  /* a) end-of-game? */
+  if (currentRound >= queue.length){
+    info.innerHTML =
+      `<b>Game over!</b><br>You got ${correctHits} / ${queue.length} correct.`
+      + `<br><button id="restart">Play again</button>`;
+    document.getElementById('restart').onclick = restartGame;
+    return;
+  }
+
+  /* b) clear previous overlays */
+  map.eachLayer(l=>{
+    if (l instanceof L.Marker || l instanceof L.Polyline) map.removeLayer(l);
+  });
+
+  /* c) pick the next image from the queue */
+  const pick = queue[currentRound];
+  solution   = {lat:pick.lat, lng:pick.lng};
+  photo.style.backgroundImage = `url('${pick.file}')`;
+  info.innerHTML = `Round ${currentRound+1} / ${queue.length}<br>`
+                 + `Click the map to guess!`;
+}
+
+/* 6️⃣  Handle player guess */
+map.on('click', e=>{
+  if (!solution) return;          // ignore stray clicks
+  const guess  = e.latlng;
+  const distKm = haversine(guess.lat,guess.lng,solution.lat,solution.lng);
+
+  /* a) show markers / line */
+  L.marker(guess).addTo(map);
+  L.marker(solution,{icon:L.icon({
+      iconUrl:'face.jpg',
+      iconSize:[100,80],iconAnchor:[12,-8]
+  })}).addTo(map).bindPopup('LOOOOOOOOOOOOOL').openPopup();
+  L.polyline([guess,solution],{dashArray:'4'}).addTo(map);
+  map.fitBounds([guess,solution],{padding:[20,20]});
+
+  /* b) scoring */
+  const hit = distKm <= 1;
+  if (hit) correctHits++;
+
+  info.innerHTML =
+    `You were <b>${distKm.toFixed(2)} km</b> away ` +
+    (hit ? '✅' : '❌') +
+    `<br><button id="next">Next round</button>`;
+
+  solution = null;                 // lock this round
+  document.getElementById('next').onclick = ()=>{
+    currentRound++;
+    startRound();
+  };
+});
+
+/* 7️⃣  Restart the whole game */
+function restartGame(){
+  queue = shuffle([...IMAGES]);
+  currentRound = 0;
+  correctHits  = 0;
+  startRound();
+}
+
+/* 8️⃣  Kick-off first round */
+startRound();
+</script>
+</body>
+</html>
